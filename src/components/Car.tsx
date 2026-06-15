@@ -16,6 +16,8 @@ export const Car: React.FC = () => {
   const meshRef = useRef<THREE.Mesh>(null);
   const addScore = useGameStore((state) => state.addScore);
   const setCarPosition = useGameStore((state) => state.setCarPosition);
+  const gameOver = useGameStore((state) => state.gameOver);
+  const setGameOver = useGameStore((state) => state.setGameOver);
   
   // Physics State
   const velocity = useRef(new THREE.Vector3());
@@ -35,8 +37,17 @@ export const Car: React.FC = () => {
     };
   }, []);
 
+  React.useEffect(() => {
+    if (!gameOver && meshRef.current) {
+      // Reset car when game is restarted
+      meshRef.current.position.set(0, 0.5, 0);
+      velocity.current.set(0, 0, 0);
+      heading.current = 0;
+    }
+  }, [gameOver]);
+
   useFrame((_, delta) => {
-    if (!meshRef.current) return;
+    if (!meshRef.current || gameOver) return;
     
     const isAccelerating = keys.current['ArrowUp'] || keys.current['KeyW'];
     const isBraking = keys.current['ArrowDown'] || keys.current['KeyS'];
@@ -109,9 +120,11 @@ export const Car: React.FC = () => {
           addExplosion([cx, 2, cz]); // Trigger explosion
         }
         
-        // Bounce back
+        // Bounce back a little and trigger game over
         velocity.current.multiplyScalar(-0.5);
         meshRef.current.position.add(velocity.current.clone().multiplyScalar(delta * 2));
+        
+        setGameOver(true);
       }
     }
 
