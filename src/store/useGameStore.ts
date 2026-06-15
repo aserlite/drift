@@ -1,17 +1,26 @@
 import { create } from 'zustand';
 
+export interface BuildingData {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  rot: number;
+}
+
 interface GameState {
   score: number;
   highScore: number;
   gameOver: boolean;
   carPosition: [number, number, number];
-  buildings: Set<string>;
+  buildings: BuildingData[];
+  spatialHash: Map<string, BuildingData[]>;
   explosions: { id: number, position: [number, number, number], time: number }[];
   addScore: (points: number) => void;
   resetScore: () => void;
   setGameOver: (isOver: boolean) => void;
   setCarPosition: (pos: [number, number, number]) => void;
-  setBuildings: (buildings: Set<string>) => void;
+  setBuildings: (buildings: BuildingData[]) => void;
   addExplosion: (pos: [number, number, number]) => void;
   removeExplosion: (id: number) => void;
 }
@@ -26,7 +35,8 @@ export const useGameStore = create<GameState>((set) => ({
   highScore: getStoredHighScore(),
   gameOver: false,
   carPosition: [0, 0, 0],
-  buildings: new Set(),
+  buildings: [],
+  spatialHash: new Map(),
   explosions: [],
   addScore: (points) => set((state) => {
     const newScore = state.score + points;
@@ -42,7 +52,17 @@ export const useGameStore = create<GameState>((set) => ({
   resetScore: () => set({ score: 0 }),
   setGameOver: (isOver) => set({ gameOver: isOver }),
   setCarPosition: (pos) => set({ carPosition: pos }),
-  setBuildings: (buildings) => set({ buildings }),
+  setBuildings: (buildings) => {
+    const spatialHash = new Map<string, BuildingData[]>();
+    buildings.forEach(b => {
+      const cx = Math.floor(b.x / 20);
+      const cz = Math.floor(b.z / 20);
+      const key = `${cx},${cz}`;
+      if (!spatialHash.has(key)) spatialHash.set(key, []);
+      spatialHash.get(key)!.push(b);
+    });
+    set({ buildings, spatialHash });
+  },
   addExplosion: (pos) => set((state) => ({ 
     explosions: [...state.explosions, { id: Date.now(), position: pos, time: Date.now() }] 
   })),

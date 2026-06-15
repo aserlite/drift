@@ -4,6 +4,7 @@ import { OrthographicCamera, Environment } from '@react-three/drei';
 import { Car } from './Car';
 import { ProceduralCity } from './ProceduralCity';
 import { Explosions } from './Explosions';
+import { Smoke } from './Smoke';
 import { useGameStore } from '../store/useGameStore';
 import * as THREE from 'three';
 
@@ -60,6 +61,7 @@ export const GameScene: React.FC = () => {
       <Car />
       <ProceduralCity />
       <Explosions />
+      <Smoke />
     </>
   );
 };

@@ -19,6 +19,7 @@ const UI = () => {
 
   useEffect(() => {
     if (gameOver) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setQuote(MOCKING_QUOTES[Math.floor(Math.random() * MOCKING_QUOTES.length)]);
     }
   }, [gameOver]);

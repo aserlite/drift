@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../store/useGameStore';
+import { emitSmoke } from '../utils/smokeSystem';
 
 // Simple Arcade Drift Physics Constants
 const ACCELERATION = 40;
@@ -13,7 +14,7 @@ const LATERAL_FRICTION_NORMAL = 0.90; // Grippy
 const LATERAL_FRICTION_DRIFT = 0.98; // Slippy (Drifting)
 
 export const Car: React.FC = () => {
-  const meshRef = useRef<THREE.Mesh>(null);
+  const meshRef = useRef<THREE.Group>(null);
   const addScore = useGameStore((state) => state.addScore);
   const setCarPosition = useGameStore((state) => state.setCarPosition);
   const gameOver = useGameStore((state) => state.gameOver);
@@ -101,31 +102,53 @@ export const Car: React.FC = () => {
     // Scoring: Score increases if lateral speed is high (drifting)
     if (Math.abs(lateralSpeed) > 10 && speed > 20) {
       addScore(Math.abs(lateralSpeed) * delta * 5); // Add score based on drift intensity
+      emitSmoke(meshRef.current.position);
     }
     
-    // Collision Detection with Buildings
-    const { buildings, addExplosion } = useGameStore.getState();
+    // Collision Detection with Buildings (Spatial Hash Point-vs-OBB)
+    const { spatialHash, addExplosion } = useGameStore.getState();
     const cx = meshRef.current.position.x;
     const cz = meshRef.current.position.z;
-    const gx = Math.round(cx / 10); // SPACING = 10 (4 + 6)
-    const gz = Math.round(cz / 10);
     
-    if (buildings.has(`${gx},${gz}`)) {
-      const bx = gx * 10;
-      const bz = gz * 10;
-      // Simple AABB collision check (Car is roughly 4x4 for this check, Building is 4x4)
-      if (Math.abs(cx - bx) < 3 && Math.abs(cz - bz) < 3) {
-        // Collision happened!
-        if (speed > 10) {
-          addExplosion([cx, 2, cz]); // Trigger explosion
+    const chunkX = Math.floor(cx / 20);
+    const chunkZ = Math.floor(cz / 20);
+    
+    let collided = false;
+
+    // Check current chunk and 8 neighbors
+    for (let i = -1; i <= 1; i++) {
+      for (let j = -1; j <= 1; j++) {
+        if (collided) break;
+        const key = `${chunkX + i},${chunkZ + j}`;
+        const buildings = spatialHash.get(key);
+        if (buildings) {
+          for (const b of buildings) {
+            // Transform car center into building's local space
+            const dx = cx - b.x;
+            const dz = cz - b.z;
+            const cos = Math.cos(-b.rot);
+            const sin = Math.sin(-b.rot);
+            const localX = dx * cos - dz * sin;
+            const localZ = dx * sin + dz * cos;
+
+            // OBB Collision check
+            if (Math.abs(localX) < b.w && Math.abs(localZ) < b.d) {
+              collided = true;
+              break;
+            }
+          }
         }
-        
-        // Bounce back a little and trigger game over
-        velocity.current.multiplyScalar(-0.5);
-        meshRef.current.position.add(velocity.current.clone().multiplyScalar(delta * 2));
-        
-        setGameOver(true);
       }
+    }
+
+    if (collided) {
+      if (speed > 10) {
+        addExplosion([cx, 2, cz]); // Trigger explosion
+      }
+      // Bounce back a little and trigger game over
+      velocity.current.multiplyScalar(-0.5);
+      meshRef.current.position.add(velocity.current.clone().multiplyScalar(delta * 2));
+      setGameOver(true);
     }
 
     // Update store position for camera follow
@@ -133,10 +156,56 @@ export const Car: React.FC = () => {
   });
 
   return (
-    <mesh ref={meshRef} castShadow receiveShadow position={[0, 0.5, 0]}>
-      {/* Simple car shape (Rectangle) */}
-      <boxGeometry args={[2, 1, 4]} />
-      <meshStandardMaterial color="#ff3366" />
-    </mesh>
+    <group ref={meshRef} position={[0, 0.5, 0]}>
+      {/* Car Body */}
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={[2, 1, 4]} />
+        <meshStandardMaterial color="#ff3366" />
+      </mesh>
+      
+      {/* Windshield */}
+      <mesh castShadow position={[0, 0.25, 0.8]}>
+        <boxGeometry args={[1.8, 0.6, 1.2]} />
+        <meshStandardMaterial color="#111111" />
+      </mesh>
+
+      {/* Headlights (Front Indicator) */}
+      <mesh position={[-0.6, 0, 2.01]}>
+        <boxGeometry args={[0.5, 0.3, 0.1]} />
+        <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={1} />
+      </mesh>
+      <mesh position={[0.6, 0, 2.01]}>
+        <boxGeometry args={[0.5, 0.3, 0.1]} />
+        <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={1} />
+      </mesh>
+
+      {/* Tail lights */}
+      <mesh position={[-0.6, 0, -2.01]}>
+        <boxGeometry args={[0.5, 0.2, 0.1]} />
+        <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={0.5} />
+      </mesh>
+      <mesh position={[0.6, 0, -2.01]}>
+        <boxGeometry args={[0.5, 0.2, 0.1]} />
+        <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={0.5} />
+      </mesh>
+      
+      {/* Wheels */}
+      <mesh castShadow position={[-1.1, -0.4, 1.2]}>
+        <boxGeometry args={[0.4, 0.6, 0.8]} />
+        <meshStandardMaterial color="#111111" />
+      </mesh>
+      <mesh castShadow position={[1.1, -0.4, 1.2]}>
+        <boxGeometry args={[0.4, 0.6, 0.8]} />
+        <meshStandardMaterial color="#111111" />
+      </mesh>
+      <mesh castShadow position={[-1.1, -0.4, -1.2]}>
+        <boxGeometry args={[0.4, 0.6, 0.8]} />
+        <meshStandardMaterial color="#111111" />
+      </mesh>
+      <mesh castShadow position={[1.1, -0.4, -1.2]}>
+        <boxGeometry args={[0.4, 0.6, 0.8]} />
+        <meshStandardMaterial color="#111111" />
+      </mesh>
+    </group>
   );
 };
