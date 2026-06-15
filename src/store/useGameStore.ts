@@ -12,17 +12,22 @@ interface GameState {
   score: number;
   highScore: number;
   gameOver: boolean;
+  mainView: 'isometric' | 'tps';
+  timeToNextCop: number;
   carPosition: [number, number, number];
+  carHeading: number;
   buildings: BuildingData[];
   spatialHash: Map<string, BuildingData[]>;
   explosions: { id: number, position: [number, number, number], time: number }[];
   addScore: (points: number) => void;
   resetScore: () => void;
   setGameOver: (isOver: boolean) => void;
-  setCarPosition: (pos: [number, number, number]) => void;
+  setMainView: (view: 'isometric' | 'tps') => void;
+  setCarPosition: (pos: [number, number, number], heading: number) => void;
   setBuildings: (buildings: BuildingData[]) => void;
   addExplosion: (pos: [number, number, number]) => void;
   removeExplosion: (id: number) => void;
+  setTimeToNextCop: (time: number) => void;
 }
 
 const getStoredHighScore = () => {
@@ -33,8 +38,11 @@ const getStoredHighScore = () => {
 export const useGameStore = create<GameState>((set) => ({
   score: 0,
   highScore: getStoredHighScore(),
+  mainView: 'isometric',
+  timeToNextCop: 15,
   gameOver: false,
   carPosition: [0, 0, 0],
+  carHeading: 0,
   buildings: [],
   spatialHash: new Map(),
   explosions: [],
@@ -49,9 +57,11 @@ export const useGameStore = create<GameState>((set) => ({
     
     return { score: newScore, highScore: newHighScore };
   }),
-  resetScore: () => set({ score: 0 }),
+  resetScore: () => set({ score: 0, timeToNextCop: 15 }),
   setGameOver: (isOver) => set({ gameOver: isOver }),
-  setCarPosition: (pos) => set({ carPosition: pos }),
+  setMainView: (view) => set({ mainView: view }),
+  setTimeToNextCop: (time) => set({ timeToNextCop: time }),
+  setCarPosition: (pos, heading) => set({ carPosition: pos, carHeading: heading }),
   setBuildings: (buildings) => {
     const spatialHash = new Map<string, BuildingData[]>();
     buildings.forEach(b => {

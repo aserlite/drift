@@ -11,8 +11,11 @@ const MOCKING_QUOTES = [
 const UI = () => {
   const score = useGameStore((state) => state.score);
   const highScore = useGameStore((state) => state.highScore);
+  const timeToNextCop = useGameStore((state) => state.timeToNextCop);
+  const mainView = useGameStore((state) => state.mainView);
   const gameOver = useGameStore((state) => state.gameOver);
   const setGameOver = useGameStore((state) => state.setGameOver);
+  const setMainView = useGameStore((state) => state.setMainView);
   const resetScore = useGameStore((state) => state.resetScore);
 
   const [quote, setQuote] = useState("");
@@ -29,6 +32,10 @@ const UI = () => {
     setGameOver(false);
   };
 
+  const toggleView = () => {
+    setMainView(mainView === 'isometric' ? 'tps' : 'isometric');
+  };
+
   return (
     <div className="ui-container">
       <div className="score-box">
@@ -41,8 +48,16 @@ const UI = () => {
           {Math.floor(highScore)}
         </p>
       </div>
+      <div className="score-box" style={{ position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)', textAlign: 'center', borderColor: '#ff0055', fontSize: '16px' }}>
+        <h2 style={{ color: '#ff0055' }}>Next Police Car In</h2>
+        <p style={{ color: '#ff0055' }}>{timeToNextCop}s</p>
+      </div>
       <div className="controls-hint">
         WASD / ARROWS to Drive • SPACE to Handbrake/Drift
+      </div>
+      
+      <div className="pip-overlay" onClick={toggleView}>
+        <button className="pip-switch-btn">Switch View</button>
       </div>
 
       {gameOver && (

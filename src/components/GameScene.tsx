@@ -1,42 +1,79 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { OrthographicCamera, Environment } from '@react-three/drei';
+import { OrthographicCamera, PerspectiveCamera, Environment } from '@react-three/drei';
 import { Car } from './Car';
 import { ProceduralCity } from './ProceduralCity';
 import { Explosions } from './Explosions';
+import { CopManager } from './CopManager';
+import { PipRenderer } from './PipRenderer';
 import { Smoke } from './Smoke';
 import { useGameStore } from '../store/useGameStore';
 import * as THREE from 'three';
 
 const CameraController = () => {
-  const cameraRef = useRef<THREE.OrthographicCamera>(null);
+  const isoCamRef = useRef<THREE.OrthographicCamera>(null);
+  const tpsCamRef = useRef<THREE.PerspectiveCamera>(null);
   const carPosition = useGameStore((state) => state.carPosition);
+  const carHeading = useGameStore((state) => state.carHeading);
+  const mainView = useGameStore((state) => state.mainView);
 
   useFrame(() => {
-    if (cameraRef.current) {
+    if (isoCamRef.current) {
       // Offset for Isometric view
       const targetPos = new THREE.Vector3(
         carPosition[0] + 50,
         carPosition[1] + 50,
         carPosition[2] + 50
       );
-      
       // Smoothly move camera towards target
-      cameraRef.current.position.lerp(targetPos, 0.1);
-      
+      isoCamRef.current.position.lerp(targetPos, 0.1);
       // Look at the car
-      cameraRef.current.lookAt(carPosition[0], carPosition[1], carPosition[2]);
+      isoCamRef.current.lookAt(carPosition[0], carPosition[1], carPosition[2]);
+    }
+    
+    if (tpsCamRef.current) {
+      // TPS Camera Logic
+      // Put camera slightly above and behind the car
+      const offset = new THREE.Vector3(0, 3, -6); 
+      offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), carHeading);
+      
+      tpsCamRef.current.position.set(
+        carPosition[0] + offset.x,
+        carPosition[1] + offset.y,
+        carPosition[2] + offset.z
+      );
+      
+      // Look slightly ahead of the car to angle the camera down
+      const lookAtTarget = new THREE.Vector3(0, 0.5, 4);
+      lookAtTarget.applyAxisAngle(new THREE.Vector3(0, 1, 0), carHeading);
+      
+      tpsCamRef.current.lookAt(
+        carPosition[0] + lookAtTarget.x,
+        carPosition[1] + lookAtTarget.y,
+        carPosition[2] + lookAtTarget.z
+      );
     }
   });
 
   return (
-    <OrthographicCamera
-      ref={cameraRef}
-      makeDefault
-      zoom={20}
-      near={-1000}
-      far={1000}
-    />
+    <>
+      <OrthographicCamera
+        name="isoCam"
+        ref={isoCamRef}
+        makeDefault={mainView === 'isometric'}
+        zoom={20}
+        near={-1000}
+        far={1000}
+      />
+      <PerspectiveCamera
+        name="tpsCam"
+        ref={tpsCamRef}
+        makeDefault={mainView === 'tps'}
+        fov={75}
+        near={0.1}
+        far={1000}
+      />
+    </>
   );
 };
 
@@ -61,7 +98,9 @@ export const GameScene: React.FC = () => {
       <Car />
       <ProceduralCity />
       <Explosions />
+      <CopManager />
       <Smoke />
+      <PipRenderer />
     </>
   );
 };

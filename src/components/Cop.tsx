@@ -1,60 +1,79 @@
-import React, { useRef } from 'react';
+/* eslint-disable react-hooks/purity */
+import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../store/useGameStore';
 import { emitSmoke } from '../utils/smokeSystem';
 
-// Simple Arcade Drift Physics Constants
-const ACCELERATION = 40;
-const BRAKING = 50;
-const MAX_SPEED = 60;
-const TURN_SPEED = 3.5;
-const FRICTION = 0.98; // General velocity decay
-const LATERAL_FRICTION_NORMAL = 0.90; // Grippy
-const LATERAL_FRICTION_DRIFT = 0.98; // Slippy (Drifting)
+// Cop AI Physics Constants (Slightly slower than player)
+const ACCELERATION = 35; // Player is 40
+const MAX_SPEED = 50; // Player is 60
+const TURN_SPEED = 2.5; // Player is 3.5
+const FRICTION = 0.98;
+const LATERAL_FRICTION_NORMAL = 0.90;
+const LATERAL_FRICTION_DRIFT = 0.98;
 
-export const Car: React.FC = () => {
+interface CopProps {
+  initialPosition: [number, number, number];
+}
+
+export const Cop: React.FC<CopProps> = ({ initialPosition }) => {
   const meshRef = useRef<THREE.Group>(null);
-  const addScore = useGameStore((state) => state.addScore);
-  const setCarPosition = useGameStore((state) => state.setCarPosition);
   const gameOver = useGameStore((state) => state.gameOver);
   const setGameOver = useGameStore((state) => state.setGameOver);
+  const addExplosion = useGameStore((state) => state.addExplosion);
   
-  // Physics State
   const velocity = useRef(new THREE.Vector3());
-  const heading = useRef(0); // Angle in radians
+  const heading = useRef(0);
   
-  // Input State
-  const keys = useRef<{ [key: string]: boolean }>({});
+  // To avoid flashing lights being synced across all cops, add random offset
+  const lightOffset = useMemo(() => Math.random() * Math.PI, []);
 
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => { keys.current[e.code] = true; };
-    const handleKeyUp = (e: KeyboardEvent) => { keys.current[e.code] = false; };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, []);
+  // Material refs for sirens
+  const blueSirenRef = useRef<THREE.MeshStandardMaterial>(null);
+  const redSirenRef = useRef<THREE.MeshStandardMaterial>(null);
 
-  React.useEffect(() => {
-    if (!gameOver && meshRef.current) {
-      // Reset car when game is restarted
-      meshRef.current.position.set(0, 0.5, 0);
-      velocity.current.set(0, 0, 0);
-      heading.current = 0;
-    }
-  }, [gameOver]);
-
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     if (!meshRef.current || gameOver) return;
     
-    const isAccelerating = keys.current['ArrowUp'] || keys.current['KeyW'];
-    const isBraking = keys.current['ArrowDown'] || keys.current['KeyS'];
-    const isTurningLeft = keys.current['ArrowLeft'] || keys.current['KeyA'];
-    const isTurningRight = keys.current['ArrowRight'] || keys.current['KeyD'];
-    const isSpace = keys.current['Space']; // Handbrake / Drift init
+    // Siren blinking effect
+    if (blueSirenRef.current && redSirenRef.current) {
+      const time = state.clock.elapsedTime * 10 + lightOffset;
+      blueSirenRef.current.emissiveIntensity = Math.sin(time) > 0 ? 5 : 0;
+      redSirenRef.current.emissiveIntensity = Math.sin(time) <= 0 ? 5 : 0;
+    }
+
+    const { carPosition, spatialHash } = useGameStore.getState();
+    const cx = meshRef.current.position.x;
+    const cz = meshRef.current.position.z;
+    const playerX = carPosition[0];
+    const playerZ = carPosition[2];
+
+    // Distance to player
+    const distToPlayer = Math.hypot(playerX - cx, playerZ - cz);
+
+    // Collision with Player!
+    if (distToPlayer < 3.5) {
+      addExplosion([cx, 2, cz]);
+      addExplosion([playerX, 2, playerZ]);
+      setGameOver(true);
+      return;
+    }
+
+    // AI Logic: Steer towards player
+    const angleToPlayer = Math.atan2(playerX - cx, playerZ - cz);
+    
+    // Normalize angle difference to [-PI, PI]
+    let diff = angleToPlayer - heading.current;
+    while (diff <= -Math.PI) diff += Math.PI * 2;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+
+    const isTurningLeft = diff > 0.1;
+    const isTurningRight = diff < -0.1;
+    
+    // Always accelerate unless very close
+    const isAccelerating = distToPlayer > 5;
+    const isSpace = Math.abs(diff) > 1.0; // Handbrake drift if turn is very sharp!
 
     const speed = velocity.current.length();
     const isMovingForward = velocity.current.dot(new THREE.Vector3(Math.sin(heading.current), 0, Math.cos(heading.current))) > 0;
@@ -66,23 +85,18 @@ export const Car: React.FC = () => {
       if (isTurningRight) heading.current -= TURN_SPEED * delta * turnMultiplier;
     }
 
-    // Forward vector based on current heading
+    // Forward vector
     const forward = new THREE.Vector3(Math.sin(heading.current), 0, Math.cos(heading.current));
-    const right = new THREE.Vector3(forward.z, 0, -forward.x); // Right vector
+    const right = new THREE.Vector3(forward.z, 0, -forward.x);
 
     // Acceleration
     if (isAccelerating) {
       velocity.current.add(forward.clone().multiplyScalar(ACCELERATION * delta));
     }
-    if (isBraking) {
-      velocity.current.sub(forward.clone().multiplyScalar(BRAKING * delta));
-    }
 
-    // Separate velocity into forward and lateral components
+    // Friction & Drift
     const forwardSpeed = velocity.current.dot(forward);
     const lateralSpeed = velocity.current.dot(right);
-
-    // Apply friction
     const lateralFriction = (isSpace || Math.abs(lateralSpeed) > 15) ? LATERAL_FRICTION_DRIFT : LATERAL_FRICTION_NORMAL;
     
     const forwardVec = forward.clone().multiplyScalar(forwardSpeed * FRICTION);
@@ -90,32 +104,22 @@ export const Car: React.FC = () => {
     
     velocity.current.copy(forwardVec.add(lateralVec));
 
-    // Cap speed
     if (velocity.current.length() > MAX_SPEED) {
       velocity.current.normalize().multiplyScalar(MAX_SPEED);
     }
 
-    // Update position
     meshRef.current.position.add(velocity.current.clone().multiplyScalar(delta));
     meshRef.current.rotation.y = heading.current;
 
-    // Scoring: Score increases if lateral speed is high (drifting)
     if (Math.abs(lateralSpeed) > 10 && speed > 20) {
-      addScore(Math.abs(lateralSpeed) * delta * 5); // Add score based on drift intensity
       emitSmoke(meshRef.current.position);
     }
-    
-    // Collision Detection with Buildings (Spatial Hash Point-vs-OBB)
-    const { spatialHash, addExplosion } = useGameStore.getState();
-    const cx = meshRef.current.position.x;
-    const cz = meshRef.current.position.z;
-    
+
+    // Building Collisions
     const chunkX = Math.floor(cx / 20);
     const chunkZ = Math.floor(cz / 20);
-    
     let collided = false;
 
-    // Check current chunk and 8 neighbors
     for (let i = -1; i <= 1; i++) {
       for (let j = -1; j <= 1; j++) {
         if (collided) break;
@@ -123,7 +127,6 @@ export const Car: React.FC = () => {
         const buildings = spatialHash.get(key);
         if (buildings) {
           for (const b of buildings) {
-            // Transform car center into building's local space
             const dx = cx - b.x;
             const dz = cz - b.z;
             const cos = Math.cos(-b.rot);
@@ -131,7 +134,6 @@ export const Car: React.FC = () => {
             const localX = dx * cos - dz * sin;
             const localZ = dx * sin + dz * cos;
 
-            // OBB Collision check
             if (Math.abs(localX) < b.w && Math.abs(localZ) < b.d) {
               collided = true;
               break;
@@ -142,34 +144,44 @@ export const Car: React.FC = () => {
     }
 
     if (collided) {
-      if (speed > 10) {
-        addExplosion([cx, 2, cz]); // Trigger explosion
-      }
-      // Bounce back a little and trigger game over
+      if (speed > 10) addExplosion([cx, 2, cz]);
+      // Cops bounce back
       velocity.current.multiplyScalar(-0.5);
       meshRef.current.position.add(velocity.current.clone().multiplyScalar(delta * 2));
-      setGameOver(true);
     }
-
-    // Update store position for camera follow
-    setCarPosition([meshRef.current.position.x, meshRef.current.position.y, meshRef.current.position.z], heading.current);
   });
 
   return (
-    <group ref={meshRef} position={[0, 0.5, 0]}>
-      {/* Car Body */}
+    <group ref={meshRef} position={initialPosition}>
+      {/* Police Car Body */}
       <mesh castShadow receiveShadow>
         <boxGeometry args={[2, 1, 4]} />
-        <meshStandardMaterial color="#ff3366" />
+        <meshStandardMaterial color="#ffffff" />
       </mesh>
       
+      {/* Police Blue Stripe */}
+      <mesh position={[0, 0.51, 0]}>
+        <boxGeometry args={[0.8, 0.05, 4]} />
+        <meshStandardMaterial color="#0055ff" />
+      </mesh>
+
       {/* Windshield */}
       <mesh castShadow position={[0, 0.25, 0.8]}>
         <boxGeometry args={[1.8, 0.6, 1.2]} />
         <meshStandardMaterial color="#111111" />
       </mesh>
 
-      {/* Headlights (Front Indicator) */}
+      {/* Sirens */}
+      <mesh position={[-0.4, 0.6, 0]}>
+        <boxGeometry args={[0.5, 0.2, 0.3]} />
+        <meshStandardMaterial ref={blueSirenRef} color="#0055ff" emissive="#0055ff" />
+      </mesh>
+      <mesh position={[0.4, 0.6, 0]}>
+        <boxGeometry args={[0.5, 0.2, 0.3]} />
+        <meshStandardMaterial ref={redSirenRef} color="#ff0000" emissive="#ff0000" />
+      </mesh>
+
+      {/* Headlights */}
       <mesh position={[-0.6, 0, 2.01]}>
         <boxGeometry args={[0.5, 0.3, 0.1]} />
         <meshStandardMaterial color="#ffffff" emissive="#ffffff" emissiveIntensity={1} />

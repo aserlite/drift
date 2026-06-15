@@ -41,14 +41,14 @@ body, html, #root {
 }
 
 .score-box h2 {
-  font-size: 1rem;
+  font-size: .75rem;
   font-weight: 700;
   color: #888;
   margin-bottom: 0.5rem;
 }
 
 .score-box p {
-  font-size: 3rem;
+  font-size: 2rem;
   font-weight: 900;
   color: #ff3366;
   margin: 0;
@@ -150,4 +150,40 @@ body, html, #root {
 
 .game-over-box button:active {
   transform: translateY(0);
+}
+
+.pip-overlay {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  width: clamp(150px, 25vw, 300px);
+  aspect-ratio: 1 / 0.6;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 100;
+  pointer-events: auto;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.2s;
+}
+
+.pip-overlay:hover {
+  border-color: rgba(255, 255, 255, 0.8);
+}
+
+.pip-switch-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  cursor: pointer;
+  pointer-events: none; /* Let parent handle clicks */
+  text-transform: uppercase;
+  font-weight: 600;
+  font-family: inherit;
 }
