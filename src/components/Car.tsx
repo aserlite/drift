@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../store/useGameStore';
 import { emitSmoke } from '../utils/smokeSystem';
+import { mpManager } from '../utils/multiplayer';
 
 // Simple Arcade Drift Physics Constants
 const ACCELERATION = 40;
@@ -114,10 +115,24 @@ export const Car: React.FC = () => {
     }
     
     // Collision Detection with Buildings (Spatial Hash Point-vs-OBB)
-    const { spatialHash, addExplosion } = useGameStore.getState();
+    const { spatialHash, addExplosion, gameMode, networkCarPos, networkCarHeading } = useGameStore.getState();
     const cx = meshRef.current.position.x;
     const cz = meshRef.current.position.z;
-    
+
+    if (gameMode === 'client') {
+      // Receive position from network
+      meshRef.current.position.set(networkCarPos[0], networkCarPos[1], networkCarPos[2]);
+      meshRef.current.rotation.y = networkCarHeading;
+      
+      // Still need to update store for camera to follow if we wanted client to spectate car, 
+      // but in client mode, the camera should follow the COP, not the car!
+      // Actually, if we are client, we are playing as the cop.
+      // So the camera should follow the cop. The `setCarPosition` in the store is used by CameraController.
+      // We need to change CameraController to follow the player's controlled entity, or change what `carPosition` means.
+      // Let's just update `meshRef` here.
+      return;
+    }
+
     const chunkX = Math.floor(cx / 20);
     const chunkZ = Math.floor(cz / 20);
     
@@ -157,10 +172,15 @@ export const Car: React.FC = () => {
       velocity.current.multiplyScalar(-0.5);
       meshRef.current.position.add(velocity.current.clone().multiplyScalar(delta * 2));
       setGameOver(true);
+      if (gameMode === 'host') mpManager.sendGameOver();
     }
 
-    // Update store position for camera follow
+    // Update store position for camera follow (since host/single controls the car)
     setCarPosition([meshRef.current.position.x, meshRef.current.position.y, meshRef.current.position.z], heading.current);
+    
+    if (gameMode === 'host') {
+      mpManager.sendCarPos([meshRef.current.position.x, meshRef.current.position.y, meshRef.current.position.z], heading.current);
+    }
   });
 
   return (

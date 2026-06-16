@@ -4,11 +4,14 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../store/useGameStore';
 import { emitSmoke } from '../utils/smokeSystem';
+import { mpManager } from '../utils/multiplayer';
 
-// Cop AI Physics Constants (Slightly slower than player)
-const ACCELERATION = 35; // Player is 40
-const MAX_SPEED = 50; // Player is 60
-const TURN_SPEED = 2.5; // Player is 3.5
+// Cop AI Physics Constants (Same as Car when in Multiplayer)
+const ACCELERATION = 40; 
+const BRAKING = 60;
+const REVERSE_ACCEL = 30;
+const MAX_SPEED = 60; 
+const TURN_SPEED = 3.5; 
 const FRICTION = 0.98;
 const LATERAL_FRICTION_NORMAL = 0.90;
 const LATERAL_FRICTION_DRIFT = 0.98;
@@ -51,37 +54,61 @@ export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
 
   const chaseTimer = useRef(0);
 
+  // Input State (for Client mode)
+  const keys = useRef<{ [key: string]: boolean }>({});
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => { keys.current[e.code] = true; };
+    const handleKeyUp = (e: KeyboardEvent) => { keys.current[e.code] = false; };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
   useFrame((state, delta) => {
     if (!meshRef.current || gameOver) return;
     
-    // Anti-stuck teleport logic
-    positionCheckTimer.current += delta;
-    if (positionCheckTimer.current >= 0.5) {
-      const distMoved = lastPos.current.distanceTo(meshRef.current.position);
-      if (distMoved < 2.0) { // Moved less than 2 units in 0.5s
-        realStuckTimer.current += 0.5;
-      } else {
-        realStuckTimer.current = 0;
-      }
-      lastPos.current.copy(meshRef.current.position);
-      positionCheckTimer.current = 0;
+    const { carPosition, carHeading, spatialHash, gameMode, networkCopPos, networkCopHeading } = useGameStore.getState();
+
+    // If Host, update cop position from network and exit early
+    if (gameMode === 'host') {
+      meshRef.current.position.set(networkCopPos[0], networkCopPos[1], networkCopPos[2]);
+      meshRef.current.rotation.y = networkCopHeading;
+      return;
     }
 
-    if (realStuckTimer.current >= 1.0) {
-      const { carPosition, carHeading } = useGameStore.getState();
-      const offsetDistance = 20 + Math.random() * 10;
-      const offsetX = -Math.sin(carHeading) * offsetDistance;
-      const offsetZ = -Math.cos(carHeading) * offsetDistance;
-      
-      meshRef.current.position.set(carPosition[0] + offsetX, 1, carPosition[2] + offsetZ);
-      heading.current = carHeading;
-      velocity.current.set(0, 0, 0);
-      realStuckTimer.current = 0;
-      stuckTimer.current = 0;
-      
-      meshRef.current.position.x += (Math.random() - 0.5) * 10;
-      meshRef.current.position.z += (Math.random() - 0.5) * 10;
-      return; 
+    // Anti-stuck teleport logic (Only in Singleplayer)
+    if (gameMode === 'single') {
+      positionCheckTimer.current += delta;
+      if (positionCheckTimer.current >= 0.5) {
+        const distMoved = lastPos.current.distanceTo(meshRef.current.position);
+        if (distMoved < 2.0) { // Moved less than 2 units in 0.5s
+          realStuckTimer.current += 0.5;
+        } else {
+          realStuckTimer.current = 0;
+        }
+        lastPos.current.copy(meshRef.current.position);
+        positionCheckTimer.current = 0;
+      }
+
+      if (realStuckTimer.current >= 1.0) {
+        const offsetDistance = 20 + Math.random() * 10;
+        const offsetX = -Math.sin(carHeading) * offsetDistance;
+        const offsetZ = -Math.cos(carHeading) * offsetDistance;
+        
+        meshRef.current.position.set(carPosition[0] + offsetX, 1, carPosition[2] + offsetZ);
+        heading.current = carHeading;
+        velocity.current.set(0, 0, 0);
+        realStuckTimer.current = 0;
+        stuckTimer.current = 0;
+        
+        meshRef.current.position.x += (Math.random() - 0.5) * 10;
+        meshRef.current.position.z += (Math.random() - 0.5) * 10;
+        return; 
+      }
     }
 
     // Siren blinking effect
@@ -91,28 +118,34 @@ export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
       redSirenRef.current.emissiveIntensity = Math.sin(time) <= 0 ? 5 : 0;
     }
 
-    const { carPosition, spatialHash } = useGameStore.getState();
     const cx = meshRef.current.position.x;
     const cz = meshRef.current.position.z;
-    const playerX = carPosition[0];
-    const playerZ = carPosition[2];
+    
+    // In client mode, 'carPosition' in the store is hijacked to make the camera follow the cop.
+    // So the actual drifter is at networkCarPos.
+    const { networkCarPos } = useGameStore.getState();
+    const playerX = gameMode === 'client' ? networkCarPos[0] : carPosition[0];
+    const playerZ = gameMode === 'client' ? networkCarPos[2] : carPosition[2];
 
     // Distance to player
     const distToPlayer = Math.hypot(playerX - cx, playerZ - cz);
 
     // Collision with Player!
     if (distToPlayer < 3.5) {
-      addExplosion([cx, 2, cz]);
-      addExplosion([playerX, 2, playerZ]);
+      useGameStore.getState().addExplosion([cx, 2, cz]);
+      useGameStore.getState().addExplosion([playerX, 2, playerZ]);
       setGameOver(true);
+      if (gameMode === 'client') mpManager.sendGameOver();
       return;
     }
 
     chaseTimer.current += delta;
-    const currentAcceleration = chaseTimer.current >= 60 ? ACCELERATION * 1.5 : ACCELERATION;
-    const currentMaxSpeed = chaseTimer.current >= 60 ? MAX_SPEED * 1.3 : MAX_SPEED;
+    // In multiplayer, no crazy boosts, keep it fair
+    const isMultiplayer = gameMode !== 'single';
+    const currentAcceleration = (!isMultiplayer && chaseTimer.current >= 60) ? ACCELERATION * 1.5 : ACCELERATION;
+    const currentMaxSpeed = (!isMultiplayer && chaseTimer.current >= 60) ? MAX_SPEED * 1.3 : MAX_SPEED;
 
-    // Cop vs Cop collision
+    // Cop vs Cop collision (Only in singleplayer really, but harmless otherwise)
     globalCops.forEach((otherCop, otherId) => {
       if (otherId === id) return;
       if (!otherCop.meshRef.current) return;
@@ -126,43 +159,64 @@ export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
       }
     });
 
-    // AI Logic: Steer towards player
-    const angleToPlayer = Math.atan2(playerX - cx, playerZ - cz);
-    
-    // Normalize angle difference to [-PI, PI]
-    let diff = angleToPlayer - heading.current;
-    while (diff <= -Math.PI) diff += Math.PI * 2;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-
-    const isTurningLeft = diff > 0.1;
-    const isTurningRight = diff < -0.1;
-    
-    // Always accelerate unless very close
-    const isAccelerating = distToPlayer > 5;
-    const isSpace = Math.abs(diff) > 1.0; // Handbrake drift if turn is very sharp!
-
     const speed = velocity.current.length();
     const isMovingForward = velocity.current.dot(new THREE.Vector3(Math.sin(heading.current), 0, Math.cos(heading.current))) > 0;
-
-    // Forward vector
     const forward = new THREE.Vector3(Math.sin(heading.current), 0, Math.cos(heading.current));
     const right = new THREE.Vector3(forward.z, 0, -forward.x);
+    let isSpace = false;
 
-    if (stuckTimer.current > 0) {
-      stuckTimer.current -= delta;
-      // Force reverse when stuck
-      velocity.current.add(forward.clone().multiplyScalar(-currentAcceleration * delta));
-    } else {
-      // Steering
+    if (gameMode === 'client') {
+      // Manual Control Logic for Player 2
+      const isAccelerating = keys.current['ArrowUp'] || keys.current['KeyW'];
+      const isBraking = keys.current['ArrowDown'] || keys.current['KeyS'];
+      const isTurningLeft = keys.current['ArrowLeft'] || keys.current['KeyA'];
+      const isTurningRight = keys.current['ArrowRight'] || keys.current['KeyD'];
+      isSpace = keys.current['Space'];
+
       if (speed > 1) {
         const turnMultiplier = isMovingForward ? 1 : -1;
         if (isTurningLeft) heading.current += TURN_SPEED * delta * turnMultiplier;
         if (isTurningRight) heading.current -= TURN_SPEED * delta * turnMultiplier;
       }
 
-      // Acceleration
       if (isAccelerating) {
         velocity.current.add(forward.clone().multiplyScalar(currentAcceleration * delta));
+      }
+      if (isBraking) {
+        const forwardSpeed = velocity.current.dot(forward);
+        if (forwardSpeed > 0.5) {
+          velocity.current.sub(forward.clone().multiplyScalar(BRAKING * delta));
+        } else {
+          velocity.current.sub(forward.clone().multiplyScalar(REVERSE_ACCEL * delta));
+        }
+      }
+    } else {
+      // AI Logic for Singleplayer
+      const angleToPlayer = Math.atan2(playerX - cx, playerZ - cz);
+      
+      let diff = angleToPlayer - heading.current;
+      while (diff <= -Math.PI) diff += Math.PI * 2;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+
+      const isTurningLeft = diff > 0.1;
+      const isTurningRight = diff < -0.1;
+      
+      const isAccelerating = distToPlayer > 5;
+      isSpace = Math.abs(diff) > 1.0; 
+
+      if (stuckTimer.current > 0) {
+        stuckTimer.current -= delta;
+        velocity.current.add(forward.clone().multiplyScalar(-currentAcceleration * delta));
+      } else {
+        if (speed > 1) {
+          const turnMultiplier = isMovingForward ? 1 : -1;
+          if (isTurningLeft) heading.current += TURN_SPEED * delta * turnMultiplier;
+          if (isTurningRight) heading.current -= TURN_SPEED * delta * turnMultiplier;
+        }
+
+        if (isAccelerating) {
+          velocity.current.add(forward.clone().multiplyScalar(currentAcceleration * delta));
+        }
       }
     }
 
@@ -215,11 +269,24 @@ export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
       }
     }
 
-    if (collided) {
+    if (collided && gameMode === 'single') {
       // Cops bounce back
       velocity.current.multiplyScalar(-0.5);
       meshRef.current.position.add(velocity.current.clone().multiplyScalar(delta * 2));
       stuckTimer.current = 1.0; // Reverse for 1 second to unstuck
+    } else if (collided && gameMode === 'client') {
+      // Manual cop bounce
+      velocity.current.multiplyScalar(-0.5);
+      meshRef.current.position.add(velocity.current.clone().multiplyScalar(delta * 2));
+    }
+
+    if (gameMode === 'client') {
+      // Set the camera to follow the cop if you are the client!
+      useGameStore.getState().setCarPosition(
+        [meshRef.current.position.x, meshRef.current.position.y, meshRef.current.position.z],
+        heading.current
+      );
+      mpManager.sendCopPos([meshRef.current.position.x, meshRef.current.position.y, meshRef.current.position.z], heading.current);
     }
   });
 

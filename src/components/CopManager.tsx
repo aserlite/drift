@@ -30,11 +30,19 @@ export const CopManager: React.FC = () => {
     }
     
     timeSinceLastSpawn.current += delta;
-    const targetTime = cops.length === 0 ? 15 : 30;
+    
+    // In multiplayer, spawn exactly ONE cop immediately, and never again.
+    const { gameMode } = useGameStore.getState();
+    const isMultiplayer = gameMode !== 'single';
+    
+    if (isMultiplayer && cops.length > 0) {
+      return; // Only one cop in multiplayer
+    }
+
+    const targetTime = isMultiplayer ? 0 : (cops.length === 0 ? 15 : 30);
     const remaining = Math.max(0, Math.ceil(targetTime - timeSinceLastSpawn.current));
     
     // Update store state for UI but throttle to avoid excessive re-renders if it was perfectly synced
-    // Actually, useGameStore.setState is fine but we can just call it
     useGameStore.getState().setTimeToNextCop(remaining);
     
     // Spawn a cop

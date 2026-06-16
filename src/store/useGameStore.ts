@@ -19,6 +19,15 @@ interface GameState {
   buildings: BuildingData[];
   spatialHash: Map<string, BuildingData[]>;
   explosions: { id: number, position: [number, number, number], time: number }[];
+  // Multiplayer State
+  gameMode: 'single' | 'host' | 'client';
+  peerId: string;
+  connectedPeerId: string;
+  networkCarPos: [number, number, number];
+  networkCarHeading: number;
+  networkCopPos: [number, number, number];
+  networkCopHeading: number;
+
   addScore: (points: number) => void;
   resetScore: () => void;
   setGameOver: (isOver: boolean) => void;
@@ -28,6 +37,13 @@ interface GameState {
   addExplosion: (pos: [number, number, number]) => void;
   removeExplosion: (id: number) => void;
   setTimeToNextCop: (time: number) => void;
+  
+  // Multiplayer Actions
+  setGameMode: (mode: 'single' | 'host' | 'client') => void;
+  setPeerId: (id: string) => void;
+  setConnectedPeerId: (id: string) => void;
+  setNetworkCar: (pos: [number, number, number], heading: number) => void;
+  setNetworkCop: (pos: [number, number, number], heading: number) => void;
 }
 
 const getStoredHighScore = () => {
@@ -46,6 +62,14 @@ export const useGameStore = create<GameState>((set) => ({
   buildings: [],
   spatialHash: new Map(),
   explosions: [],
+  gameMode: 'single',
+  peerId: '',
+  connectedPeerId: '',
+  networkCarPos: [0, 0, 0],
+  networkCarHeading: 0,
+  networkCopPos: [0, 0, 0],
+  networkCopHeading: 0,
+
   addScore: (points) => set((state) => {
     const newScore = state.score + points;
     let newHighScore = state.highScore;
@@ -79,4 +103,9 @@ export const useGameStore = create<GameState>((set) => ({
   removeExplosion: (id) => set((state) => ({
     explosions: state.explosions.filter(e => e.id !== id)
   })),
+  setGameMode: (mode) => set({ gameMode: mode }),
+  setPeerId: (id) => set({ peerId: id }),
+  setConnectedPeerId: (id) => set({ connectedPeerId: id }),
+  setNetworkCar: (pos, heading) => set({ networkCarPos: pos, networkCarHeading: heading }),
+  setNetworkCop: (pos, heading) => set({ networkCopPos: pos, networkCopHeading: heading }),
 }));
