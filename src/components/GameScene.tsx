@@ -7,6 +7,7 @@ import { Explosions } from './Explosions';
 import { CopManager } from './CopManager';
 import { PipRenderer } from './PipRenderer';
 import { Smoke } from './Smoke';
+import { ArrowIndicator } from './ArrowIndicator';
 import { useGameStore } from '../store/useGameStore';
 import * as THREE from 'three';
 
@@ -109,6 +110,7 @@ export const GameScene: React.FC = () => {
       <Explosions />
       <CopManager />
       <Smoke />
+      <ArrowIndicator />
       <PipRenderer />
     </>
   );

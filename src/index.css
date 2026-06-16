@@ -188,6 +188,10 @@ body, html, #root {
   font-family: inherit;
 }
 
+.mobile-drift-btn {
+  display: none !important;
+}
+
 /* Mobile HUD Adjustments */
 @media (max-width: 768px) {
   .ui-container {
@@ -242,6 +246,7 @@ body, html, #root {
   }
 
   .mobile-drift-btn {
+    display: flex !important;
     bottom: 30% !important;
   }
 }

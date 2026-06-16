@@ -36,6 +36,8 @@ export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
   const lastPos = useRef(new THREE.Vector3().fromArray(initialPosition));
   const realStuckTimer = useRef(0);
   const positionCheckTimer = useRef(0);
+  const networkCarHistory = useRef<{ time: number; pos: [number, number, number] }[]>([]);
+  const blinkTimer = useRef(0);
   
   // To avoid flashing lights being synced across all cops, add random offset
   const lightOffset = useMemo(() => Math.random() * Math.PI, []);
@@ -70,7 +72,23 @@ export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
   useFrame((state, delta) => {
     if (!meshRef.current || gameOver) return;
     
-    const { carPosition, carHeading, spatialHash, gameMode, networkCopPos, networkCopHeading } = useGameStore.getState();
+    const { carPosition, carHeading, spatialHash, gameMode, networkCopPos, networkCopHeading, networkCarPos } = useGameStore.getState();
+
+    // Blink effect
+    if (blinkTimer.current > 0) {
+      blinkTimer.current -= delta;
+      meshRef.current.visible = Math.sin(state.clock.elapsedTime * 20) > 0;
+    } else {
+      meshRef.current.visible = true;
+    }
+
+    if (gameMode === 'client') {
+      networkCarHistory.current.push({ time: state.clock.elapsedTime, pos: [...networkCarPos] });
+      // Keep only 2 seconds of history
+      while (networkCarHistory.current.length > 0 && state.clock.elapsedTime - networkCarHistory.current[0].time > 2.0) {
+        networkCarHistory.current.shift();
+      }
+    }
 
     // If Host, update cop position from network and exit early
     if (gameMode === 'host') {
@@ -79,8 +97,8 @@ export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
       return;
     }
 
-    // Anti-stuck teleport logic (Only in Singleplayer)
-    if (gameMode === 'single') {
+    // Anti-stuck teleport logic
+    if (gameMode === 'single' || gameMode === 'client') {
       positionCheckTimer.current += delta;
       if (positionCheckTimer.current >= 0.5) {
         const distMoved = lastPos.current.distanceTo(meshRef.current.position);
@@ -94,12 +112,32 @@ export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
       }
 
       if (realStuckTimer.current >= 1.0) {
-        const offsetDistance = 20 + Math.random() * 10;
-        const offsetX = -Math.sin(carHeading) * offsetDistance;
-        const offsetZ = -Math.cos(carHeading) * offsetDistance;
-        
-        meshRef.current.position.set(carPosition[0] + offsetX, 1, carPosition[2] + offsetZ);
-        heading.current = carHeading;
+        if (gameMode === 'single') {
+          const offsetDistance = 20 + Math.random() * 10;
+          const offsetX = -Math.sin(carHeading) * offsetDistance;
+          const offsetZ = -Math.cos(carHeading) * offsetDistance;
+          
+          meshRef.current.position.set(carPosition[0] + offsetX, 1, carPosition[2] + offsetZ);
+          heading.current = carHeading;
+        } else {
+          // Client mode teleport to 1s ago
+          const targetTime = state.clock.elapsedTime - 1.0;
+          let spawnX = networkCarPos[0];
+          let spawnZ = networkCarPos[2];
+          let minDiff = Infinity;
+          for (const entry of networkCarHistory.current) {
+            const diff = Math.abs(entry.time - targetTime);
+            if (diff < minDiff) {
+              minDiff = diff;
+              spawnX = entry.pos[0];
+              spawnZ = entry.pos[2];
+            }
+          }
+          meshRef.current.position.set(spawnX, 1, spawnZ);
+          // Point towards the player
+          heading.current = Math.atan2(networkCarPos[0] - spawnX, networkCarPos[2] - spawnZ);
+          blinkTimer.current = 2.0; // Blink for 2 seconds
+        }
         velocity.current.set(0, 0, 0);
         realStuckTimer.current = 0;
         stuckTimer.current = 0;
@@ -122,7 +160,6 @@ export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
     
     // In client mode, 'carPosition' in the store is hijacked to make the camera follow the cop.
     // So the actual drifter is at networkCarPos.
-    const { networkCarPos } = useGameStore.getState();
     const playerX = gameMode === 'client' ? networkCarPos[0] : carPosition[0];
     const playerZ = gameMode === 'client' ? networkCarPos[2] : carPosition[2];
 
