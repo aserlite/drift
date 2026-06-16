@@ -166,16 +166,22 @@ export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
 
     if (gameMode === 'client') {
       // Manual Control Logic for Player 2
-      const isAccelerating = keys.current['ArrowUp'] || keys.current['KeyW'];
-      const isBraking = keys.current['ArrowDown'] || keys.current['KeyS'];
-      const isTurningLeft = keys.current['ArrowLeft'] || keys.current['KeyA'];
-      const isTurningRight = keys.current['ArrowRight'] || keys.current['KeyD'];
-      isSpace = keys.current['Space'];
+      const { joystick, isDrifting } = useGameStore.getState();
+      
+      const isAccelerating = keys.current['ArrowUp'] || keys.current['KeyW'] || joystick.y < -0.2;
+      const isBraking = keys.current['ArrowDown'] || keys.current['KeyS'] || joystick.y > 0.2;
+      const isTurningLeft = keys.current['ArrowLeft'] || keys.current['KeyA'] || joystick.x < -0.2;
+      const isTurningRight = keys.current['ArrowRight'] || keys.current['KeyD'] || joystick.x > 0.2;
+      isSpace = keys.current['Space'] || isDrifting;
 
       if (speed > 1) {
         const turnMultiplier = isMovingForward ? 1 : -1;
-        if (isTurningLeft) heading.current += TURN_SPEED * delta * turnMultiplier;
-        if (isTurningRight) heading.current -= TURN_SPEED * delta * turnMultiplier;
+        if (Math.abs(joystick.x) > 0.2) {
+          heading.current -= TURN_SPEED * delta * turnMultiplier * joystick.x;
+        } else {
+          if (isTurningLeft) heading.current += TURN_SPEED * delta * turnMultiplier;
+          if (isTurningRight) heading.current -= TURN_SPEED * delta * turnMultiplier;
+        }
       }
 
       if (isAccelerating) {

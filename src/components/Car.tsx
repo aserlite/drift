@@ -52,11 +52,13 @@ export const Car: React.FC = () => {
   useFrame((_, delta) => {
     if (!meshRef.current || gameOver) return;
     
-    const isAccelerating = keys.current['ArrowUp'] || keys.current['KeyW'];
-    const isBraking = keys.current['ArrowDown'] || keys.current['KeyS'];
-    const isTurningLeft = keys.current['ArrowLeft'] || keys.current['KeyA'];
-    const isTurningRight = keys.current['ArrowRight'] || keys.current['KeyD'];
-    const isSpace = keys.current['Space']; // Handbrake / Drift init
+    const { joystick, isDrifting } = useGameStore.getState();
+
+    const isAccelerating = keys.current['ArrowUp'] || keys.current['KeyW'] || joystick.y < -0.2;
+    const isBraking = keys.current['ArrowDown'] || keys.current['KeyS'] || joystick.y > 0.2;
+    const isTurningLeft = keys.current['ArrowLeft'] || keys.current['KeyA'] || joystick.x < -0.2;
+    const isTurningRight = keys.current['ArrowRight'] || keys.current['KeyD'] || joystick.x > 0.2;
+    const isSpace = keys.current['Space'] || isDrifting; // Handbrake / Drift init
 
     const speed = velocity.current.length();
     const isMovingForward = velocity.current.dot(new THREE.Vector3(Math.sin(heading.current), 0, Math.cos(heading.current))) > 0;
@@ -64,8 +66,14 @@ export const Car: React.FC = () => {
     // Steering
     if (speed > 1) {
       const turnMultiplier = isMovingForward ? 1 : -1;
-      if (isTurningLeft) heading.current += TURN_SPEED * delta * turnMultiplier;
-      if (isTurningRight) heading.current -= TURN_SPEED * delta * turnMultiplier;
+      
+      // Analog steering for joystick
+      if (Math.abs(joystick.x) > 0.2) {
+        heading.current -= TURN_SPEED * delta * turnMultiplier * joystick.x;
+      } else {
+        if (isTurningLeft) heading.current += TURN_SPEED * delta * turnMultiplier;
+        if (isTurningRight) heading.current -= TURN_SPEED * delta * turnMultiplier;
+      }
     }
 
     // Forward vector based on current heading

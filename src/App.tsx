@@ -2,6 +2,7 @@ import { Suspense, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { GameScene } from './components/GameScene';
 import { useGameStore } from './store/useGameStore';
+import { MobileControls } from './components/MobileControls';
 import './index.css';
 
 import { mpManager } from './utils/multiplayer';
@@ -143,6 +144,8 @@ const UI = () => {
       <div className="pip-overlay" onClick={toggleView}>
         <button className="pip-switch-btn">Switch View</button>
       </div>
+
+      <MobileControls />
 
       {gameOver && (
         <div className="game-over-overlay">

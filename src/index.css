@@ -187,3 +187,61 @@ body, html, #root {
   font-weight: 600;
   font-family: inherit;
 }
+
+/* Mobile HUD Adjustments */
+@media (max-width: 768px) {
+  .ui-container {
+    padding: 1rem;
+  }
+
+  .score-box {
+    padding: 1rem 1.5rem;
+  }
+
+  .score-box h2 {
+    font-size: 0.6rem;
+  }
+
+  .score-box p {
+    font-size: 1.5rem;
+  }
+
+  .controls-hint {
+    display: none; /* Hide keyboard hints on mobile */
+  }
+
+  .game-over-box {
+    padding: 2rem;
+    width: 90%;
+  }
+
+  .game-over-box h1 {
+    font-size: 3rem;
+  }
+
+  .mocking-text {
+    font-size: 1.2rem;
+  }
+
+  .score-text {
+    font-size: 1.2rem;
+    margin-bottom: 2rem;
+  }
+
+  .game-over-box button {
+    padding: 0.8rem 2rem;
+    font-size: 1.2rem;
+  }
+
+  .pip-overlay {
+    bottom: unset;
+    top: 100px;
+    right: 10px;
+    left: unset;
+    width: 120px;
+  }
+
+  .mobile-drift-btn {
+    bottom: 30% !important;
+  }
+}

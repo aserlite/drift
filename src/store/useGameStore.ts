@@ -12,13 +12,18 @@ interface GameState {
   score: number;
   highScore: number;
   gameOver: boolean;
-  mainView: 'isometric' | 'tps';
   timeToNextCop: number;
+  mainView: 'isometric' | 'tps';
   carPosition: [number, number, number];
   carHeading: number;
   buildings: BuildingData[];
   spatialHash: Map<string, BuildingData[]>;
   explosions: { id: number, position: [number, number, number], time: number }[];
+  
+  // Mobile Controls
+  joystick: { x: number; y: number };
+  isDrifting: boolean;
+
   // Multiplayer State
   gameMode: 'single' | 'host' | 'client';
   peerId: string;
@@ -28,17 +33,19 @@ interface GameState {
   networkCopPos: [number, number, number];
   networkCopHeading: number;
 
+  setCarPosition: (pos: [number, number, number], heading: number) => void;
   addScore: (points: number) => void;
   resetScore: () => void;
-  setGameOver: (isOver: boolean) => void;
-  setMainView: (view: 'isometric' | 'tps') => void;
-  setCarPosition: (pos: [number, number, number], heading: number) => void;
+  setGameOver: (state: boolean) => void;
+  setTimeToNextCop: (time: number) => void;
   setBuildings: (buildings: BuildingData[]) => void;
   addExplosion: (pos: [number, number, number]) => void;
   removeExplosion: (id: number) => void;
-  setTimeToNextCop: (time: number) => void;
+  setMainView: (view: 'isometric' | 'tps') => void;
   
-  // Multiplayer Actions
+  setJoystick: (x: number, y: number) => void;
+  setDrifting: (isDrifting: boolean) => void;
+
   setGameMode: (mode: 'single' | 'host' | 'client') => void;
   setPeerId: (id: string) => void;
   setConnectedPeerId: (id: string) => void;
@@ -57,11 +64,15 @@ export const useGameStore = create<GameState>((set) => ({
   mainView: 'isometric',
   timeToNextCop: 15,
   gameOver: false,
-  carPosition: [0, 0, 0],
+  carPosition: [0, 0.5, 0],
   carHeading: 0,
   buildings: [],
   spatialHash: new Map(),
   explosions: [],
+  
+  joystick: { x: 0, y: 0 },
+  isDrifting: false,
+
   gameMode: 'single',
   peerId: '',
   connectedPeerId: '',
@@ -103,6 +114,8 @@ export const useGameStore = create<GameState>((set) => ({
   removeExplosion: (id) => set((state) => ({
     explosions: state.explosions.filter(e => e.id !== id)
   })),
+  setJoystick: (x, y) => set({ joystick: { x, y } }),
+  setDrifting: (isDrifting) => set({ isDrifting }),
   setGameMode: (mode) => set({ gameMode: mode }),
   setPeerId: (id) => set({ peerId: id }),
   setConnectedPeerId: (id) => set({ connectedPeerId: id }),
