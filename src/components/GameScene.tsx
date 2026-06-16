@@ -19,7 +19,7 @@ const CameraController = () => {
 
   const camHeadingRef = useRef(carHeading);
 
-  useFrame((state, delta) => {
+  useFrame((_state, delta) => {
     if (isoCamRef.current) {
       // Offset for Isometric view
       const targetPos = new THREE.Vector3(

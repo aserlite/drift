@@ -16,7 +16,7 @@ const FRICTION = 0.98;
 const LATERAL_FRICTION_NORMAL = 0.90;
 const LATERAL_FRICTION_DRIFT = 0.98;
 
-export const globalCops = new Map<number, { meshRef: React.RefObject<THREE.Group>, velocity: React.MutableRefObject<THREE.Vector3> }>();
+export const globalCops = new Map<number, { meshRef: React.RefObject<THREE.Group | null>, velocity: React.MutableRefObject<THREE.Vector3> }>();
 
 interface CopProps {
   id: number;
@@ -27,7 +27,6 @@ export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
   const meshRef = useRef<THREE.Group>(null);
   const gameOver = useGameStore((state) => state.gameOver);
   const setGameOver = useGameStore((state) => state.setGameOver);
-  const addExplosion = useGameStore((state) => state.addExplosion);
   
   const velocity = useRef(new THREE.Vector3());
   const heading = useRef(0);
