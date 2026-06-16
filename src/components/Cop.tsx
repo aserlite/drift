@@ -25,6 +25,12 @@ export const Cop: React.FC<CopProps> = ({ initialPosition }) => {
   
   const velocity = useRef(new THREE.Vector3());
   const heading = useRef(0);
+  const stuckTimer = useRef(0);
+  
+  // Anti-stuck tracking
+  const lastPos = useRef(new THREE.Vector3().fromArray(initialPosition));
+  const realStuckTimer = useRef(0);
+  const positionCheckTimer = useRef(0);
   
   // To avoid flashing lights being synced across all cops, add random offset
   const lightOffset = useMemo(() => Math.random() * Math.PI, []);
@@ -36,6 +42,36 @@ export const Cop: React.FC<CopProps> = ({ initialPosition }) => {
   useFrame((state, delta) => {
     if (!meshRef.current || gameOver) return;
     
+    // Anti-stuck teleport logic
+    positionCheckTimer.current += delta;
+    if (positionCheckTimer.current >= 0.5) {
+      const distMoved = lastPos.current.distanceTo(meshRef.current.position);
+      if (distMoved < 2.0) { // Moved less than 2 units in 0.5s
+        realStuckTimer.current += 0.5;
+      } else {
+        realStuckTimer.current = 0;
+      }
+      lastPos.current.copy(meshRef.current.position);
+      positionCheckTimer.current = 0;
+    }
+
+    if (realStuckTimer.current >= 1.0) {
+      const { carPosition, carHeading } = useGameStore.getState();
+      const offsetDistance = 20 + Math.random() * 10;
+      const offsetX = -Math.sin(carHeading) * offsetDistance;
+      const offsetZ = -Math.cos(carHeading) * offsetDistance;
+      
+      meshRef.current.position.set(carPosition[0] + offsetX, 1, carPosition[2] + offsetZ);
+      heading.current = carHeading;
+      velocity.current.set(0, 0, 0);
+      realStuckTimer.current = 0;
+      stuckTimer.current = 0;
+      
+      meshRef.current.position.x += (Math.random() - 0.5) * 10;
+      meshRef.current.position.z += (Math.random() - 0.5) * 10;
+      return; 
+    }
+
     // Siren blinking effect
     if (blueSirenRef.current && redSirenRef.current) {
       const time = state.clock.elapsedTime * 10 + lightOffset;
@@ -78,20 +114,26 @@ export const Cop: React.FC<CopProps> = ({ initialPosition }) => {
     const speed = velocity.current.length();
     const isMovingForward = velocity.current.dot(new THREE.Vector3(Math.sin(heading.current), 0, Math.cos(heading.current))) > 0;
 
-    // Steering
-    if (speed > 1) {
-      const turnMultiplier = isMovingForward ? 1 : -1;
-      if (isTurningLeft) heading.current += TURN_SPEED * delta * turnMultiplier;
-      if (isTurningRight) heading.current -= TURN_SPEED * delta * turnMultiplier;
-    }
-
     // Forward vector
     const forward = new THREE.Vector3(Math.sin(heading.current), 0, Math.cos(heading.current));
     const right = new THREE.Vector3(forward.z, 0, -forward.x);
 
-    // Acceleration
-    if (isAccelerating) {
-      velocity.current.add(forward.clone().multiplyScalar(ACCELERATION * delta));
+    if (stuckTimer.current > 0) {
+      stuckTimer.current -= delta;
+      // Force reverse when stuck
+      velocity.current.add(forward.clone().multiplyScalar(-ACCELERATION * delta));
+    } else {
+      // Steering
+      if (speed > 1) {
+        const turnMultiplier = isMovingForward ? 1 : -1;
+        if (isTurningLeft) heading.current += TURN_SPEED * delta * turnMultiplier;
+        if (isTurningRight) heading.current -= TURN_SPEED * delta * turnMultiplier;
+      }
+
+      // Acceleration
+      if (isAccelerating) {
+        velocity.current.add(forward.clone().multiplyScalar(ACCELERATION * delta));
+      }
     }
 
     // Friction & Drift
@@ -144,10 +186,10 @@ export const Cop: React.FC<CopProps> = ({ initialPosition }) => {
     }
 
     if (collided) {
-      if (speed > 10) addExplosion([cx, 2, cz]);
       // Cops bounce back
       velocity.current.multiplyScalar(-0.5);
       meshRef.current.position.add(velocity.current.clone().multiplyScalar(delta * 2));
+      stuckTimer.current = 1.0; // Reverse for 1 second to unstuck
     }
   });
 

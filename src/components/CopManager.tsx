@@ -8,6 +8,7 @@ export const CopManager: React.FC = () => {
   const gameOver = useGameStore((state) => state.gameOver);
   const [cops, setCops] = useState<{ id: number; position: [number, number, number] }[]>([]);
   const timeSinceLastSpawn = useRef(0);
+  const positionHistory = useRef<{ time: number; position: [number, number, number] }[]>([]);
 
   React.useEffect(() => {
     if (!gameOver) {
@@ -16,8 +17,17 @@ export const CopManager: React.FC = () => {
     }
   }, [gameOver]);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     if (gameOver) return;
+    
+    // Record position history
+    const { carPosition } = useGameStore.getState();
+    positionHistory.current.push({ time: state.clock.elapsedTime, position: [...carPosition] });
+    
+    // Clean up old history (older than 2 seconds)
+    while (positionHistory.current.length > 0 && state.clock.elapsedTime - positionHistory.current[0].time > 2.0) {
+      positionHistory.current.shift();
+    }
     
     timeSinceLastSpawn.current += delta;
     const targetTime = cops.length === 0 ? 15 : 30;
@@ -33,35 +43,27 @@ export const CopManager: React.FC = () => {
       
       const { carPosition } = useGameStore.getState();
       
-      // Pick a random sector 1 to 2 sectors away from the player
-      const playerSx = Math.floor(carPosition[0] / 50);
-      const playerSz = Math.floor(carPosition[2] / 50);
-
-      let offsetSx = 0;
-      let offsetSz = 0;
-      // Ensure they don't spawn in the exact same sector as the player
-      while (Math.abs(offsetSx) <= 1 && Math.abs(offsetSz) <= 1) {
-        offsetSx = Math.floor(Math.random() * 5) - 2; // -2, -1, 0, 1, 2
-        offsetSz = Math.floor(Math.random() * 5) - 2;
+      // Find the position from ~1.0 second ago
+      const spawnTargetTime = state.clock.elapsedTime - 1.0;
+      let spawnX = carPosition[0];
+      let spawnZ = carPosition[2];
+      let minDiff = Infinity;
+      
+      for (const entry of positionHistory.current) {
+        const diff = Math.abs(entry.time - spawnTargetTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          spawnX = entry.position[0];
+          spawnZ = entry.position[2];
+        }
       }
-      
-      const targetSx = playerSx + offsetSx;
-      const targetSz = playerSz + offsetSz;
-      
-      // Calculate sector positions including the Staggered Grid offset
-      const offset = Math.abs(targetSz) % 2 === 1 ? 25 : 0;
-      const bx = targetSx * 50 + offset;
-      const bz = targetSz * 50;
 
-      let spawnX, spawnZ;
-      if (Math.random() > 0.5) {
-        // Spawn perfectly on the center of the Horizontal Road
-        spawnX = bx + Math.random() * 50;
-        spawnZ = bz + 25;
-      } else {
-        // Spawn perfectly on the center of the Vertical Road
-        spawnX = bx + 25;
-        spawnZ = bz + Math.random() * 50;
+      // Check if player stood still (distance is too small)
+      const dist = Math.hypot(spawnX - carPosition[0], spawnZ - carPosition[2]);
+      if (dist < 15) {
+        // Fallback: spawn a bit further back
+        spawnX -= 20;
+        spawnZ -= 20;
       }
       
       setCops(prev => [...prev, { id: Date.now(), position: [spawnX, 0.5, spawnZ] }]);

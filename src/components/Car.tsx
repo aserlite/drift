@@ -6,7 +6,8 @@ import { emitSmoke } from '../utils/smokeSystem';
 
 // Simple Arcade Drift Physics Constants
 const ACCELERATION = 40;
-const BRAKING = 50;
+const BRAKING = 60;
+const REVERSE_ACCEL = 30;
 const MAX_SPEED = 60;
 const TURN_SPEED = 3.5;
 const FRICTION = 0.98; // General velocity decay
@@ -75,17 +76,24 @@ export const Car: React.FC = () => {
       velocity.current.add(forward.clone().multiplyScalar(ACCELERATION * delta));
     }
     if (isBraking) {
-      velocity.current.sub(forward.clone().multiplyScalar(BRAKING * delta));
+      const forwardSpeed = velocity.current.dot(forward);
+      if (forwardSpeed > 0.5) {
+        // Strong brakes if moving forward
+        velocity.current.sub(forward.clone().multiplyScalar(BRAKING * delta));
+      } else {
+        // Weak acceleration if in reverse
+        velocity.current.sub(forward.clone().multiplyScalar(REVERSE_ACCEL * delta));
+      }
     }
 
     // Separate velocity into forward and lateral components
-    const forwardSpeed = velocity.current.dot(forward);
+    const forwardSpeedFinal = velocity.current.dot(forward);
     const lateralSpeed = velocity.current.dot(right);
 
     // Apply friction
     const lateralFriction = (isSpace || Math.abs(lateralSpeed) > 15) ? LATERAL_FRICTION_DRIFT : LATERAL_FRICTION_NORMAL;
     
-    const forwardVec = forward.clone().multiplyScalar(forwardSpeed * FRICTION);
+    const forwardVec = forward.clone().multiplyScalar(forwardSpeedFinal * FRICTION);
     const lateralVec = right.clone().multiplyScalar(lateralSpeed * lateralFriction);
     
     velocity.current.copy(forwardVec.add(lateralVec));
