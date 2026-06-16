@@ -6,38 +6,62 @@ class MultiplayerManager {
   private conn: DataConnection | null = null;
 
   initHost() {
+    console.log('[P2P] Initializing Host...');
     if (this.peer) {
       this.peer.destroy();
     }
-    this.peer = new Peer();
+    this.peer = new Peer({ debug: 2 }); // Add debug level
+    
     this.peer.on('open', (id) => {
+      console.log('[P2P] Host Peer created with ID:', id);
       useGameStore.getState().setPeerId(id);
     });
 
     this.peer.on('connection', (connection) => {
+      console.log('[P2P] Incoming connection from:', connection.peer);
       this.conn = connection;
       this.setupConnection();
       useGameStore.getState().setConnectedPeerId(connection.peer);
     });
+
+    this.peer.on('error', (err) => {
+      console.error('[P2P] Host Peer Error:', err);
+    });
   }
 
   joinGame(hostId: string) {
+    console.log('[P2P] Joining game with Host ID:', hostId);
     if (this.peer) {
       this.peer.destroy();
     }
-    this.peer = new Peer();
+    this.peer = new Peer({ debug: 2 });
+    
     this.peer.on('open', (id) => {
+      console.log('[P2P] Client Peer created with ID:', id);
       useGameStore.getState().setPeerId(id);
-      this.conn = this.peer!.connect(hostId);
+      
+      console.log('[P2P] Attempting to connect to:', hostId);
+      this.conn = this.peer!.connect(hostId, { reliable: true });
       this.setupConnection();
+      
       this.conn.on('open', () => {
+        console.log('[P2P] Connection to host established!');
         useGameStore.getState().setConnectedPeerId(hostId);
       });
+
+      this.conn.on('error', (err) => {
+        console.error('[P2P] Client Connection Error:', err);
+      });
+    });
+
+    this.peer.on('error', (err) => {
+      console.error('[P2P] Client Peer Error:', err);
     });
   }
 
   private setupConnection() {
     if (!this.conn) return;
+    console.log('[P2P] Setting up connection event listeners...');
     this.conn.on('data', (data: any) => {
       const store = useGameStore.getState();
       if (data.type === 'car_pos') {
