@@ -13,11 +13,14 @@ const FRICTION = 0.98;
 const LATERAL_FRICTION_NORMAL = 0.90;
 const LATERAL_FRICTION_DRIFT = 0.98;
 
+export const globalCops = new Map<number, { meshRef: React.RefObject<THREE.Group>, velocity: React.MutableRefObject<THREE.Vector3> }>();
+
 interface CopProps {
+  id: number;
   initialPosition: [number, number, number];
 }
 
-export const Cop: React.FC<CopProps> = ({ initialPosition }) => {
+export const Cop: React.FC<CopProps> = ({ id, initialPosition }) => {
   const meshRef = useRef<THREE.Group>(null);
   const gameOver = useGameStore((state) => state.gameOver);
   const setGameOver = useGameStore((state) => state.setGameOver);
@@ -38,6 +41,15 @@ export const Cop: React.FC<CopProps> = ({ initialPosition }) => {
   // Material refs for sirens
   const blueSirenRef = useRef<THREE.MeshStandardMaterial>(null);
   const redSirenRef = useRef<THREE.MeshStandardMaterial>(null);
+
+  React.useEffect(() => {
+    globalCops.set(id, { meshRef, velocity });
+    return () => {
+      globalCops.delete(id);
+    };
+  }, [id]);
+
+  const chaseTimer = useRef(0);
 
   useFrame((state, delta) => {
     if (!meshRef.current || gameOver) return;
@@ -96,6 +108,24 @@ export const Cop: React.FC<CopProps> = ({ initialPosition }) => {
       return;
     }
 
+    chaseTimer.current += delta;
+    const currentAcceleration = chaseTimer.current >= 60 ? ACCELERATION * 1.5 : ACCELERATION;
+    const currentMaxSpeed = chaseTimer.current >= 60 ? MAX_SPEED * 1.3 : MAX_SPEED;
+
+    // Cop vs Cop collision
+    globalCops.forEach((otherCop, otherId) => {
+      if (otherId === id) return;
+      if (!otherCop.meshRef.current) return;
+      
+      const otherPos = otherCop.meshRef.current.position;
+      const dist = meshRef.current!.position.distanceTo(otherPos);
+      if (dist < 4.5) { 
+        // Push apart gently
+        const pushDir = meshRef.current!.position.clone().sub(otherPos).normalize();
+        velocity.current.add(pushDir.multiplyScalar(currentAcceleration * delta * 2));
+      }
+    });
+
     // AI Logic: Steer towards player
     const angleToPlayer = Math.atan2(playerX - cx, playerZ - cz);
     
@@ -121,7 +151,7 @@ export const Cop: React.FC<CopProps> = ({ initialPosition }) => {
     if (stuckTimer.current > 0) {
       stuckTimer.current -= delta;
       // Force reverse when stuck
-      velocity.current.add(forward.clone().multiplyScalar(-ACCELERATION * delta));
+      velocity.current.add(forward.clone().multiplyScalar(-currentAcceleration * delta));
     } else {
       // Steering
       if (speed > 1) {
@@ -132,7 +162,7 @@ export const Cop: React.FC<CopProps> = ({ initialPosition }) => {
 
       // Acceleration
       if (isAccelerating) {
-        velocity.current.add(forward.clone().multiplyScalar(ACCELERATION * delta));
+        velocity.current.add(forward.clone().multiplyScalar(currentAcceleration * delta));
       }
     }
 
@@ -146,8 +176,8 @@ export const Cop: React.FC<CopProps> = ({ initialPosition }) => {
     
     velocity.current.copy(forwardVec.add(lateralVec));
 
-    if (velocity.current.length() > MAX_SPEED) {
-      velocity.current.normalize().multiplyScalar(MAX_SPEED);
+    if (velocity.current.length() > currentMaxSpeed) {
+      velocity.current.normalize().multiplyScalar(currentMaxSpeed);
     }
 
     meshRef.current.position.add(velocity.current.clone().multiplyScalar(delta));

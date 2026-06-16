@@ -73,7 +73,7 @@ export const CopManager: React.FC = () => {
   return (
     <>
       {cops.map((cop) => (
-        <Cop key={cop.id} initialPosition={cop.position} />
+        <Cop key={cop.id} id={cop.id} initialPosition={cop.position} />
       ))}
     </>
   );

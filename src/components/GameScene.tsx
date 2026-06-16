@@ -17,7 +17,9 @@ const CameraController = () => {
   const carHeading = useGameStore((state) => state.carHeading);
   const mainView = useGameStore((state) => state.mainView);
 
-  useFrame(() => {
+  const camHeadingRef = useRef(carHeading);
+
+  useFrame((state, delta) => {
     if (isoCamRef.current) {
       // Offset for Isometric view
       const targetPos = new THREE.Vector3(
@@ -31,11 +33,18 @@ const CameraController = () => {
       isoCamRef.current.lookAt(carPosition[0], carPosition[1], carPosition[2]);
     }
     
+    // Smooth camera heading
+    let diff = carHeading - camHeadingRef.current;
+    while (diff <= -Math.PI) diff += Math.PI * 2;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    
+    camHeadingRef.current += diff * (4.0 * delta); // Adjust 4.0 for stiffness
+
     if (tpsCamRef.current) {
       // TPS Camera Logic
-      // Put camera slightly above and behind the car
+      // Put camera slightly above and behind the car, using smoothed heading
       const offset = new THREE.Vector3(0, 3, -6); 
-      offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), carHeading);
+      offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), camHeadingRef.current);
       
       tpsCamRef.current.position.set(
         carPosition[0] + offset.x,
@@ -43,9 +52,9 @@ const CameraController = () => {
         carPosition[2] + offset.z
       );
       
-      // Look slightly ahead of the car to angle the camera down
+      // Look slightly ahead using the smoothed heading
       const lookAtTarget = new THREE.Vector3(0, 0.5, 4);
-      lookAtTarget.applyAxisAngle(new THREE.Vector3(0, 1, 0), carHeading);
+      lookAtTarget.applyAxisAngle(new THREE.Vector3(0, 1, 0), camHeadingRef.current);
       
       tpsCamRef.current.lookAt(
         carPosition[0] + lookAtTarget.x,
